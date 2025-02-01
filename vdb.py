@@ -22,11 +22,12 @@ class WrapperClass:
 
     @modal.enter()
     def enter(self):
-        if embedding_fn is callable:
-            embedding_model = embedding_fn
-        else:
-            embedding_model = modal.Function.lookup(embedding_fn)
-        self.db: DuckVDB = DuckVDB(db_path=f"{MOUNT_PATH}/{self.name}.duckdb", embedding_function=embedding_model)
+        # if embedding_fn is callable:
+        #     embedding_model = embedding_fn
+        # else:
+        #     embedding_model = modal.Function.lookup(embedding_fn)
+        embedding_fn = modal.Cls.from_name("embedders", "SentenceTransformersEmbedder")
+        self.db: DuckVDB = DuckVDB(db_path=f"{MOUNT_PATH}/{self.name}.duckdb", embedding_function=embedding_fn)
 
     @modal.method()
     def insert(self, metadatas: list[dict[str, Any]], embeddings: List[np.array]):
@@ -43,8 +44,10 @@ class WrapperClass:
 def main():
     import json
     pokedata = json.load(open("pokemon.json"))
-    metadatas = [{"name": p["name"], "type": p["type"]} for p in pokedata]
-    embeddings = [embedding_fn.embed.remote(p["name"]) for p in pokedata]
+    first_10_pokemon: list[dict] = pokedata[:10]
+    metadatas: list[dict] = [json.dumps(pokemon) for pokemon in first_10_pokemon] #[{"name": pokemon["name"], "description": pokemon["description"]} for pokemon in first_10_pokemon]
+    embedding_fn = modal.Cls.from_name("embedders", "SentenceTransformersEmbedder")()
+    embeddings: list[np.array] = list(embedding_fn.embed.map([pokemon["description"] for pokemon in first_10_pokemon]))
     remote_db = WrapperClass(name="pokemon_db")
     remote_db.insert.remote(metadatas, embeddings)
     remote_db.query.remote("water", k=10, filters={"base.Attack": ("<=", 49)})

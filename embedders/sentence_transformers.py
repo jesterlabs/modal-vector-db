@@ -1,7 +1,7 @@
 import modal
 import numpy as np
-from embedders.base import app
 
+app = modal.App("embedders")
 image = modal.Image.debian_slim()\
     .pip_install("sentence_transformers")
 

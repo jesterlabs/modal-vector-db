@@ -1,6 +1,6 @@
 import modal
 import numpy as np
-app = modal.App("embedders")
+# app = modal.App("embedders")
 
 
 class BaseEmbedder:
