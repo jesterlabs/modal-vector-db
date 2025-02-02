@@ -2,10 +2,10 @@ import modal
 import numpy as np
 from embedders.base import BASE_EMBEDDERS_APP as app, BaseEmbedder
 
-image = modal.Image.debian_slim()\
+sentence_transformers_image = modal.Image.debian_slim()\
     .pip_install("sentence_transformers")
 
-@app.cls(image=image)
+@app.cls(image=sentence_transformers_image)
 class SentenceTransformersEmbedder(BaseEmbedder):
     model_name: str = modal.parameter()
 

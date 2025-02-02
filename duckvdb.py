@@ -4,9 +4,7 @@ from typing import List, Dict, Any, Optional
 import uuid
 from utils import json_to_uuid
 from dataclasses import dataclass
-from embedders.base import BaseEmbedder
-from typing import Union, Callable
-import modal
+from embedders import BaseEmbedder
 
 @dataclass
 class Result:
@@ -29,10 +27,6 @@ class DuckVDB:
         if new_table:
             self.drop_table()
         self.create_table()
-
-    @classmethod
-    def with_remote_embedder(cls, embedder: Union[Callable[..., Any], modal.Cls], embedding_dim: int):
-        return cls(db_path="", embedding_function=embedder, embedding_dim=embedding_dim)
 
     def create_table(self):
         # only create table if doesn't exist
@@ -97,6 +91,7 @@ class DuckVDB:
         return " AND ".join(format_filter(key, value) for key, value in filters.items())
 
     def query(self, query: str, k: int = 10, filters: Optional[Dict[str, Any]] = None) -> list[Result]:
+        import json
         embedding = self.embedding_function(query)
         
         if filters:
@@ -114,7 +109,10 @@ class DuckVDB:
         
         params = [embedding, k]
         result = self.conn.execute(query_sql, params).fetchall()
-        return [Result(id=row[0], metadata=row[1], distance=row[2]) for row in result]
+        return [Result(id=row[0], metadata=json.loads(row[1]), distance=row[2]) for row in result]
+    
+    def num_rows(self):
+        return self.conn.sql("SELECT COUNT(*) FROM items;").fetchone()[0]
 
 
 
