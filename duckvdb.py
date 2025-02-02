@@ -1,11 +1,12 @@
-import os
 import duckdb
 import numpy as np
-from pathlib import Path
 from typing import List, Dict, Any, Optional
-import json
 import uuid
+from utils import json_to_uuid
 from dataclasses import dataclass
+from embedders.base import BaseEmbedder
+from typing import Union, Callable
+import modal
 
 @dataclass
 class Result:
@@ -13,24 +14,13 @@ class Result:
     metadata: dict
     distance: float
 
-def json_to_uuid(json_data, namespace=uuid.NAMESPACE_DNS):
-    """Convert JSON data to a deterministic UUID."""
-    json_str = json.dumps(json_data, sort_keys=True)  # Ensure consistent ordering
-    return uuid.uuid5(namespace, json_str)
-
-class EmbeddingFunction:
-    def __init__(self, vector_dim: int):
-        self.vector_dim = vector_dim
-
-    def __call__(self, x: str) -> np.array:
-        return np.random.rand(self.vector_dim)
 
 class DuckVDB:
-    def __init__(self, db_path: str, embedding_function: EmbeddingFunction, new_table: bool = False):
+    def __init__(self, db_path: str, embedding_function: BaseEmbedder, embedding_dim: int, new_table: bool = False):
         self.db_path = db_path
         self.embedding_function = embedding_function
+        self.embedding_dim = embedding_dim
         self.conn = duckdb.connect(self.db_path)
-        # install vss extension
         self.conn.sql("INSTALL vss; LOAD vss")
         self.conn.sql("INSTALL json; LOAD json")
         self.conn.sql("PRAGMA memory_limit='100GB'")
@@ -40,10 +30,13 @@ class DuckVDB:
             self.drop_table()
         self.create_table()
 
+    @classmethod
+    def with_remote_embedder(cls, embedder: Union[Callable[..., Any], modal.Cls], embedding_dim: int):
+        return cls(db_path="", embedding_function=embedder, embedding_dim=embedding_dim)
+
     def create_table(self):
-        embedding_dim = self.embedding_function.vector_dim
         # only create table if doesn't exist
-        self.conn.sql(f"CREATE TABLE IF NOT EXISTS items (id UUID PRIMARY KEY, metadata JSON, embedding FLOAT[{embedding_dim}])")
+        self.conn.sql(f"CREATE TABLE IF NOT EXISTS items (id UUID PRIMARY KEY, metadata JSON, embedding FLOAT[{self.embedding_dim}])")
 
     def drop_table(self):
         self.conn.sql("DROP TABLE IF EXISTS items;")
@@ -112,16 +105,14 @@ class DuckVDB:
             filter_string = "1=1"
         
         query_sql = f"""
-            SELECT DISTINCT id, metadata, array_cosine_distance(embedding, ?::FLOAT[{self.embedding_function.vector_dim}]) as distance
+            SELECT DISTINCT id, metadata, array_cosine_distance(embedding, ?::FLOAT[{self.embedding_dim}]) as distance
             FROM items 
             WHERE {filter_string}
             ORDER BY distance
             LIMIT ?;
         """
         
-        # Only include embedding and k in params since filters are now formatted in the SQL string
         params = [embedding, k]
-        
         result = self.conn.execute(query_sql, params).fetchall()
         return [Result(id=row[0], metadata=row[1], distance=row[2]) for row in result]
 

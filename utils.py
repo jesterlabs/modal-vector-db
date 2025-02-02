@@ -1,7 +1,15 @@
+import json
+import uuid
 import numpy as np
 from vicinity.datatypes import QueryResult
 from vicinity.utils import Metric, normalize
 import numpy.typing as npt
+
+
+def json_to_uuid(json_data, namespace=uuid.NAMESPACE_DNS):
+    """Convert JSON data to a deterministic UUID."""
+    json_str = json.dumps(json_data, sort_keys=True)  # Ensure consistent ordering
+    return uuid.uuid5(namespace, json_str)
 
 def build_where_clause(filters: dict) -> str:
     """
@@ -66,42 +74,30 @@ def numpy_similarity_calculation(query_vectors: npt.NDArray, vectors: npt.NDArra
         List of (index, score) tuples for each query vector
     """
     if metric == Metric.COSINE:
-        # Normalize both query and database vectors
         query_vectors = normalize(query_vectors)
         vectors = normalize(vectors)
-        # Compute dot product (cosine similarity for normalized vectors)
         scores = np.dot(query_vectors, vectors.T)
         
     elif metric == Metric.EUCLIDEAN:
-        # Compute pairwise euclidean distances
         scores = np.sqrt(((query_vectors[:, None] - vectors) ** 2).sum(axis=2))
-        # Convert to similarity scores (negative distance)
         scores = -scores
         
     elif metric == Metric.MANHATTAN:
-        # Compute pairwise manhattan distances
         scores = np.abs(query_vectors[:, None] - vectors).sum(axis=2)
-        # Convert to similarity scores (negative distance)
         scores = -scores
         
     elif metric == Metric.INNER_PRODUCT:
-        # Simple dot product
         scores = np.dot(query_vectors, vectors.T)
         
     elif metric == Metric.L2_SQUARED:
-        # Squared euclidean distance without sqrt
         scores = ((query_vectors[:, None] - vectors) ** 2).sum(axis=2)
-        # Convert to similarity scores (negative distance)
         scores = -scores
         
     elif metric == Metric.HAMMING:
-        # XOR the bits and count ones (assuming binary vectors)
         scores = np.count_nonzero(query_vectors[:, None] != vectors, axis=2)
-        # Convert to similarity scores (negative distance)
         scores = -scores
         
     elif metric == Metric.TANIMOTO:
-        # Compute Tanimoto coefficient (assuming binary vectors)
         intersection = np.dot(query_vectors, vectors.T)
         query_sum = (query_vectors ** 2).sum(axis=1)[:, None]
         vector_sum = (vectors ** 2).sum(axis=1)
@@ -111,7 +107,6 @@ def numpy_similarity_calculation(query_vectors: npt.NDArray, vectors: npt.NDArra
     else:
         raise ValueError(f"Unsupported metric: {metric}")
 
-    # Convert scores to list of (index, score) tuples for each query
     results = []
     for query_scores in scores:
         query_results = list(enumerate(query_scores))
@@ -132,13 +127,10 @@ def numpy_similarity_threshold_calculation(query_vectors: npt.NDArray, vectors: 
     Returns:
         List of (index, score) tuples for each query vector where score >= threshold
     """
-    # Get all similarity scores using existing function
     all_results = numpy_similarity_calculation(query_vectors, vectors, metric)
     
-    # Filter results by threshold
     threshold_results = []
     for query_results in all_results:
-        # Keep only results meeting threshold
         filtered_results = [
             (idx, score) for idx, score in query_results 
             if score >= threshold
