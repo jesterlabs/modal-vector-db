@@ -27,9 +27,9 @@ class ModalVectorDB:
         self.db: DuckVDB = DuckVDB(db_path=f"{MOUNT_PATH}/{self.name}.duckdb", embedding_function=self.embedding_fn.remote, embedding_dim=self.embedding_dim, new_table=self.create_new_table)
 
     @modal.method()
-    def insert(self, metadatas: list[dict[str, Any]], embeddings: Optional[List[np.array]] = None, embed_field: Optional[str] = None):
+    def insert(self, metadatas: list[dict], embeddings: Optional[List[np.array]] = None, embed_field: Optional[str] = None):
         import json
-        stringified_metadatas = [json.dumps(metadata) for metadata in metadatas]
+        stringified_metadatas: list[str] = [json.dumps(metadata) if isinstance(metadata, dict) else metadata for metadata in metadatas]
         if embeddings is None:
             if embed_field is None:
                 to_embed = stringified_metadatas
@@ -56,7 +56,7 @@ def main():
     pokedata = json.load(open("examples/data/pokemon.json"))
     print(f" Number of pokemon: {len(pokedata)}")
     metadatas: list[dict] = [pokemon for pokemon in pokedata]
-    to_embed = [metadata["description"] for metadata in metadatas]
+    to_embed: list[str] = [metadata["description"] for metadata in metadatas]
     embeddings = list(modal.Cls.from_name("embedders", "SentenceTransformersEmbedder")(model_name="all-MiniLM-L6-v2").embed.map(to_embed))
 
     # Insert w/ vectors & embeddings
