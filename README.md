@@ -25,6 +25,9 @@ import json
 from pprint import pprint
 from embedders import BASE_EMBEDDER_APP_NAME
 from vdb import BASE_DB_APP_NAME
+
+# pokemon_data = requests.get("https://raw.githubusercontent.com/Purukitto/pokemon-data.json/refs/heads/master/pokedex.json").json()
+
 pokedata = json.load(open("examples/data/pokemon.json"))
 print(f" Number of pokemon: {len(pokedata)}")
 
