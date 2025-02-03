@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 import uuid
 from utils import json_to_uuid
 from dataclasses import dataclass
-from embedders import BaseEmbedder
+import json
 
 @dataclass
 class Result:
@@ -14,10 +14,9 @@ class Result:
 
 
 class DuckVDB:
-    def __init__(self, db_path: str, embedding_function: BaseEmbedder, embedding_dim: int, new_table: bool = False):
+    def __init__(self, db_path: str, embedding_dim: Optional[int] = None, new_table: bool = False):
         self.db_path = db_path
-        self.embedding_function = embedding_function
-        self.embedding_dim = embedding_dim
+        self.embedding_dim=embedding_dim
         self.conn = duckdb.connect(self.db_path)
         self.conn.sql("INSTALL vss; LOAD vss")
         self.conn.sql("INSTALL json; LOAD json")
@@ -65,20 +64,29 @@ class DuckVDB:
         def format_filter(key: str, value: Any) -> str:
             # Check if this is a JSON path (contains dots)
             if '.' in key:
-                # Use json_extract for nested fields
                 json_path = key.split('.')
-                field = f"json_extract(metadata, '{json_path[-1]}')"
-                
-                # For nested paths deeper than one level, use multiple json_extract calls
-                for part in reversed(json_path[:-1]):
-                    field = f"json_extract(json_extract(metadata, '{part}'), '{json_path[-1]}')"
+                field = 'metadata'
+                for part in json_path:
+                    field = f"json_extract({field}, '{part}')"
             else:
-                # Regular column
-                field = key
+                field = f"json_extract(metadata, '{key}')"
             
-            # Handle operator tuples like ("<", 20)
+            # Handle operator tuples like (">", 50) or ("contains", "Flying")
             if isinstance(value, tuple) and len(value) == 2:
                 operator, val = value
+                if operator == "=":
+                    if isinstance(val, list):
+                        return f"{field}::JSON = '{json.dumps(val)}'::JSON"
+                elif operator == "contains":
+                    # Determine the appropriate type cast based on the value type
+                    if isinstance(val, str):
+                        return f"list_contains({field}::JSON::VARCHAR[], '{val}'::VARCHAR)"
+                    elif isinstance(val, int):
+                        return f"list_contains({field}::JSON::INTEGER[], {val}::INTEGER)"
+                    elif isinstance(val, float):
+                        return f"list_contains({field}::JSON::DOUBLE[], {val}::DOUBLE)"
+                    else:
+                        return f"list_contains({field}::JSON::VARCHAR[], '{str(val)}'::VARCHAR)"
                 if isinstance(val, str):
                     return f"{field} {operator} '{val}'"
                 return f"{field} {operator} {val}"
@@ -86,24 +94,24 @@ class DuckVDB:
             # Handle direct value comparison
             if isinstance(value, str):
                 return f"{field} = '{value}'"
+            if isinstance(value, list):
+                return f"{field}::JSON = '{json.dumps(value)}'::JSON"
             return f"{field} = {value}"
 
         return " AND ".join(format_filter(key, value) for key, value in filters.items())
 
-    def query(self, query: str, k: int = 10, filters: Optional[Dict[str, Any]] = None) -> list[Result]:
-        import json
-        embedding = self.embedding_function(query)
-        
+    def query(self, embedding: np.array, k: int = 10, filters: Optional[Dict[str, Any]] = None) -> list[Result]:
+        embedding_dim: int = embedding.shape[0]
         if filters:
             filter_string = self.format_filters(filters)
         else:
             filter_string = "1=1"
         
         query_sql = f"""
-            SELECT DISTINCT id, metadata, array_cosine_distance(embedding, ?::FLOAT[{self.embedding_dim}]) as distance
+            SELECT DISTINCT id, metadata, array_cosine_distance(embedding, ?::FLOAT[{embedding_dim}]) as distance
             FROM items 
             WHERE {filter_string}
-            ORDER BY distance
+            ORDER BY distance ASC
             LIMIT ?;
         """
         
