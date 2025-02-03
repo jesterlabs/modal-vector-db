@@ -18,7 +18,8 @@ pip install modal
 ```
 
 ## Example Usage
-Run the following under a modal app entrypoint (can see an example in `vdb.py`)
+Run the following under a modal app entrypoint (can see an example in `vdb.py`). Or do `modal run vdb.py` to see the example in action.
+
 ```python
 import json
 from pprint import pprint
